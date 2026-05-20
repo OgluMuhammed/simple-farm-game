@@ -3,73 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiplayer Farm</title>
+    <title>Multiplayer Farm Tycoon</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #e0f0d0; }
+        body { font-family: sans-serif; text-align: center; background: #e0f0d0; margin: 0; padding: 20px; }
+        .stats { font-size: 24px; font-weight: bold; color: #b8860b; margin-bottom: 20px; }
         .grid { 
             display: grid; 
-            grid-template-columns: repeat(3, 100px); 
-            gap: 10px; 
+            grid-template-columns: repeat(3, 110px); 
+            gap: 15px; 
             justify-content: center; 
-            margin-top: 50px; 
         }
         .tile { 
-            width: 100px; 
-            height: 100px; 
+            width: 110px; 
+            height: 110px; 
             background: #8b5a2b; /* Dirt Brown */
-            border-radius: 8px; 
+            border-radius: 12px; 
             cursor: pointer; 
             display: flex; 
+            flex-direction: column;
             align-items: center; 
             justify-content: center; 
             color: white; 
             font-weight: bold; 
+            font-size: 14px;
             user-select: none;
+            transition: background 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .tile.planted { background: #2e8b57; /* Plant Green */ }
+        .tile.growing { background: #cd853f; color: #fff8dc; /* Sprout Orange/Yellow */ }
+        .tile.ready { background: #2e8b57; animation: pulse 1.5s infinite; /* Ready Green */ }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+            100% { transform: scale(1); }
+        }
     </style>
-    <!-- Loads the multiplayer communication tool -->
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-    <h1>Our Multiplayer Farm</h1>
-    <p>Click a dirt tile to plant wheat!</p>
+    <h1>Multiplayer Farm Tycoon</h1>
+    <div class="stats">💰 Coins: <span id="coinCount">0</span></div>
     
     <div class="grid" id="farmGrid"></div>
 
     <script>
-        // Connect automatically to the server hosting this file
         const socket = io(); 
         const gridElement = document.getElementById('farmGrid');
+        const coinCountElement = document.getElementById('coinCount');
 
-        // Create 9 empty tiles visually
+        // Build the 9 grid elements
         for (let i = 0; i < 9; i++) {
             const tile = document.createElement('div');
             tile.classList.add('tile');
             tile.id = `tile-${i}`;
             tile.innerText = "Dirt";
             
-            // When a player clicks a tile, tell the server
             tile.addEventListener('click', () => {
-                socket.emit('plant', { tileId: i });
+                socket.emit('tileClick', { tileId: i });
             });
             
             gridElement.appendChild(tile);
         }
 
-        // Listen for updates from the server
+        // Receive grid updates from server
         socket.on('updateGrid', (serverGrid) => {
-            serverGrid.forEach((cropState, index) => {
+            serverGrid.forEach((tileState, index) => {
                 const tile = document.getElementById(`tile-${index}`);
-                if (cropState === 'wheat') {
-                    tile.classList.add('planted');
-                    tile.innerText = "Wheat";
-                } else {
-                    tile.classList.remove('planted');
-                    tile.innerText = "Dirt";
+                tile.className = 'tile'; // Reset classes
+                
+                if (tileState.status === 'empty') {
+                    tile.innerText = "🤎 Dirt";
+                } 
+                else if (tileState.status === 'growing') {
+                    tile.classList.add('growing');
+                    tile.innerText = "🌱 Growing...";
+                } 
+                else if (tileState.status === 'ready') {
+                    tile.classList.add('ready');
+                    tile.innerText = "🌾 Harvest!";
                 }
             });
+        });
+
+        // Receive private coin balance updates
+        socket.on('updateBalance', (balance) => {
+            coinCountElement.innerText = balance;
         });
     </script>
 </body>

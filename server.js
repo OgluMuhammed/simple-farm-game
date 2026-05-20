@@ -7,44 +7,73 @@ import { fileURLToPath } from 'url';
 const app = express();
 const server = createServer(app);
 const io = new Server(server);
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Serve our HTML file to players
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Master farm layout: 9 tiles, all empty initially
-let farmGrid = Array(9).fill('empty'); 
+// Advanced Farm Grid: Holds objects instead of just strings
+let farmGrid = Array(9).fill(null).map(() => ({
+    status: 'empty', // 'empty', 'growing', or 'ready'
+    plantedAt: null
+}));
+
+// Simple player money tracker
+let playerBalances = {};
+
+// Server loop: Every 1 second, check if any growing crop is done (takes 10 seconds)
+setInterval(() => {
+    let changed = false;
+    const now = Date.now();
+
+    farmGrid.forEach((tile) => {
+        if (tile.status === 'growing' && now - tile.plantedAt >= 10000) {
+            tile.status = 'ready';
+            changed = true;
+        }
+    });
+
+    // If any crop finished growing, update all players instantly
+    if (changed) {
+        io.emit('updateGrid', farmGrid);
+    }
+}, 1000);
 
 io.on('connection', (socket) => {
-    console.log('A farmer joined the game!');
+    // Initialize new player balance with 0 coins
+    playerBalances[socket.id] = 0;
     
-    // Send the current state of the farm immediately upon connection
+    // Send initial data
     socket.emit('updateGrid', farmGrid);
+    socket.emit('updateBalance', playerBalances[socket.id]);
 
-    // Listen for planting events
-    socket.on('plant', (data) => {
+    socket.on('tileClick', (data) => {
         const { tileId } = data;
-        
-        // Toggle system: plant wheat if empty, harvest if full
-        if (farmGrid[tileId] === 'empty') {
-            farmGrid[tileId] = 'wheat';
-        } else {
-            farmGrid[tileId] = 'empty';
-        }
+        const tile = farmGrid[tileId];
 
-        // Broadcast the updated farm grid to EVERYONE online
-        io.emit('updateGrid', farmGrid);
+        if (tile.status === 'empty') {
+            // Plant seed
+            tile.status = 'growing';
+            tile.plantedAt = Date.now();
+            io.emit('updateGrid', farmGrid);
+        } 
+        else if (tile.status === 'ready') {
+            // Harvest crop and award 10 coins
+            tile.status = 'empty';
+            tile.plantedAt = null;
+            playerBalances[socket.id] += 10;
+            
+            socket.emit('updateBalance', playerBalances[socket.id]);
+            io.emit('updateGrid', farmGrid);
+        }
     });
 
     socket.on('disconnect', () => {
-        console.log('A farmer disconnected.');
+        delete playerBalances[socket.id];
     });
 });
 
-// Use the port provided by the cloud service, or default to 3000 locally
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
