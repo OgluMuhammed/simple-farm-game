@@ -1,0 +1,61 @@
+body { 
+    font-family: sans-serif; 
+    background: #e0f0d0; 
+    margin: 0; 
+    padding: 0; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    height: 100vh; 
+    user-select: none;
+}
+.hidden { display: none !important; }
+
+/* Auth Layer Styling */
+#authScreen { 
+    max-width: 300px; 
+    margin: auto; 
+    background: white; 
+    padding: 30px; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15); 
+    text-align: center; 
+}
+#authScreen input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+#authScreen button { width: 95%; padding: 10px; margin: 5px 0; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
+.btn-login { background: #2e8b57; color: white; }
+.btn-register { background: #cd853f; color: white; }
+#errorMessage { color: red; font-weight: bold; margin-bottom: 10px; }
+
+/* Core Layout Split */
+#gameScreen { display: flex; width: 100vw; height: 100vh; }
+
+/* Left Sidebar */
+.sidebar { 
+    width: 280px; 
+    background: #2e4a3c; 
+    color: white; 
+    padding: 20px; 
+    box-sizing: border-box; 
+    display: flex; 
+    flex-direction: column; 
+    box-shadow: 4px 0 10px rgba(0,0,0,0.2); 
+}
+.sidebar h2 { margin-top: 0; color: #f0e68c; font-size: 20px; border-bottom: 2px solid #41634f; padding-bottom: 10px; }
+.player-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
+.player-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #3a5847; font-size: 16px; }
+.player-item.self { color: #57ff9a; font-weight: bold; }
+
+/* Right Viewport Canvas Container */
+.main-farm { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+.main-farm h1 { color: #2e8b57; margin-bottom: 5px; }
+#farmerName { color: #1e5e3a; font-weight: bold; }
+
+/* The Game View canvas styling */
+canvas {
+    background: #d4e7c5;
+    border: 3px solid #b2c9a0;
+    border-radius: 12px;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+    margin-top: 20px;
+}
