@@ -67,7 +67,9 @@ socket.on('updateLeaderboard', (playerArray) => {
         const li = document.createElement('li');
         li.classList.add('player-item');
         if (player.username === myUsername) li.classList.add('self');
-        li.innerHTML = `<span>🧑‍🌾 ${player.username}</span> <span>💰 ${player.coins}</span>`;
+        
+        // Formats player rows to match the new UI look
+        li.innerHTML = `<span>🧑‍🌾 ${player.username}</span> <span class="coin-badge">💰 ${player.coins}</span>`;
         playerListContainer.appendChild(li);
     });
 });

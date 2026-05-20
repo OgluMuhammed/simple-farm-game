@@ -4,7 +4,156 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multiplayer Isometric Farm Tycoon</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Modern UI Styling Rules */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #a8e063 0%, #56ab2f 100%); 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            color: #2c3e50;
+            user-select: none;
+            overflow: hidden;
+        }
+        .hidden { display: none !important; }
+
+        /* Auth Screen Glassmorphism Styling */
+        #authScreen { 
+            max-width: 340px; 
+            width: 100%;
+            margin: auto; 
+            background: rgba(255, 255, 255, 0.9); 
+            padding: 35px; 
+            border-radius: 16px; 
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); 
+            text-align: center; 
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        #authScreen h2 { margin-top: 0; color: #27ae60; font-size: 26px; font-weight: 700; margin-bottom: 20px; }
+        #authScreen input { 
+            width: 90%; 
+            padding: 12px; 
+            margin: 8px 0; 
+            border: 2px solid #e0e0e0; 
+            border-radius: 8px; 
+            font-size: 15px; 
+            transition: border-color 0.2s;
+            outline: none;
+        }
+        #authScreen input:focus { border-color: #2ec771; }
+        #authScreen button { 
+            width: 98%; 
+            padding: 12px; 
+            margin: 8px 0; 
+            border: none; 
+            border-radius: 8px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            transition: transform 0.1s, filter 0.2s; 
+        }
+        #authScreen button:active { transform: scale(0.98); }
+        .btn-login { background: #27ae60; color: white; box-shadow: 0 4px 10px rgba(39, 174, 96, 0.3); }
+        .btn-login:hover { filter: brightness(1.05); }
+        .btn-register { background: #d35400; color: white; box-shadow: 0 4px 10px rgba(211, 84, 0, 0.3); }
+        .btn-register:hover { filter: brightness(1.05); }
+        #errorMessage { color: #c0392b; font-weight: bold; margin-bottom: 12px; font-size: 14px; }
+
+        /* Main Game Layout Configuration */
+        #gameScreen { display: flex; width: 100vw; height: 100vh; }
+
+        /* Sleek Left Sidebar */
+        .sidebar { 
+            width: 300px; 
+            background: linear-gradient(180deg, #1e3c2f 0%, #11221a 100%); 
+            color: #ecf0f1; 
+            padding: 25px; 
+            box-sizing: border-box; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 5px 0 15px rgba(0,0,0,0.15); 
+            z-index: 10;
+        }
+        .sidebar h2 { 
+            margin-top: 0; 
+            color: #f1c40f; 
+            font-size: 18px; 
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #27ae60; 
+            padding-bottom: 12px; 
+            margin-bottom: 15px;
+        }
+        .player-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
+        
+        /* Leaderboard Items Styling */
+        .player-item { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            padding: 12px 14px; 
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            margin-bottom: 8px;
+            font-size: 15px; 
+            border: 1px solid rgba(255,255,255,0.02);
+        }
+        .player-item.self { 
+            background: rgba(39, 174, 96, 0.2); 
+            border-color: rgba(39, 174, 96, 0.4);
+            color: #2ecc71;
+            font-weight: bold; 
+        }
+        .coin-badge {
+            background: #f1c40f;
+            color: #2c3e50;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        /* Right Viewport Container */
+        .main-farm { 
+            flex-grow: 1; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 20px;
+            position: relative;
+        }
+        
+        /* Modern Sub-Header Display info cards */
+        .game-header {
+            text-align: center;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px 30px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            backdrop-filter: blur(5px);
+        }
+        .game-header h1 { color: #27ae60; margin: 0; font-size: 24px; font-weight: 700; }
+        .game-header p { margin: 4px 0 0 0; font-size: 14px; color: #7f8c8d; }
+        #farmerName { color: #27ae60; font-weight: bold; }
+
+        /* The Interactive Canvas Viewport */
+        canvas {
+            background: #c3e6a1;
+            border: 4px solid #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.12);
+            cursor: grab;
+            transition: box-shadow 0.3s;
+        }
+        canvas:active { cursor: grabbing; box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+    </style>
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -22,18 +171,22 @@
         
         <div class="sidebar">
             <h2>Active Farmers</h2>
-            <ul class="player-list" id="playerListContainer"></ul>
+            <ul class="player-list" id="playerListContainer">
+                </ul>
         </div>
 
         <div class="main-farm">
-            <h1>Your Private Land</h1>
-            <p>Welcome back, <span id="farmerName">Player</span>!</p>
+            <div class="game-header">
+                <h1>Your Private Land</h1>
+                <p>Welcome back, <span id="farmerName">Player</span>! Drag to move • Scroll to zoom</p>
+            </div>
             
             <canvas id="gameCanvas" width="500" height="400"></canvas>
         </div>
 
     </div>
 
+    <script src="config.js"></script>
     <script src="game.js"></script>
 </body>
 </html>
