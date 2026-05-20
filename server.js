@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
+// --- DATABASE CONNECTIONS ---
 const SUPABASE_URL = 'https://nlrluyhpyqahiehvwuyu.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_2lH9GJ74AtuUWaJnbdpY2g_fJd5_uou';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -70,7 +71,7 @@ io.on('connection', (socket) => {
             activeFarmers[socket.id] = {
                 username: username,
                 coins: 0,
-                grid: Array(9).fill(null).map(() => ({ status: 'empty', plantedAt: null }))
+                grid: Array(2500).fill(null).map(() => ({ status: 'empty', plantedAt: null })) // 50x50 Allocation
             };
             
             socket.emit('updateMyGrid', activeFarmers[socket.id].grid);
@@ -93,11 +94,10 @@ io.on('connection', (socket) => {
             const loggedInUser = users[0];
             socket.emit('authSuccess', { username: loggedInUser.username, coins: loggedInUser.coins });
             
-            // Build their isolated farming field profile map space
             activeFarmers[socket.id] = {
                 username: loggedInUser.username,
                 coins: loggedInUser.coins,
-                grid: Array(9).fill(null).map(() => ({ status: 'empty', plantedAt: null }))
+                grid: Array(2500).fill(null).map(() => ({ status: 'empty', plantedAt: null })) // 50x50 Allocation
             };
 
             socket.emit('updateMyGrid', activeFarmers[socket.id].grid);
@@ -108,10 +108,12 @@ io.on('connection', (socket) => {
     // ISOLATED HOOK INTERACTIONS
     socket.on('tileClick', async (data) => {
         const farmer = activeFarmers[socket.id];
-        if (!farmer) return; // Prevent actions if not authenticated
+        if (!farmer) return;
 
         const { tileId } = data;
         const tile = farmer.grid[tileId];
+
+        if (!tile) return; // Guard clause against broken coordinate indices
 
         if (tile.status === 'empty') {
             tile.status = 'growing';
@@ -130,13 +132,13 @@ io.on('connection', (socket) => {
                 .eq('username', farmer.username);
 
             socket.emit('updateMyGrid', farmer.grid);
-            broadcastLeaderboard(); // Update leaderboard values across client lists
+            broadcastLeaderboard();
         }
     });
 
     socket.on('disconnect', () => {
         delete activeFarmers[socket.id];
-        broadcastLeaderboard(); // Remove from live visible active user list sidebar panel
+        broadcastLeaderboard();
     });
 });
 

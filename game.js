@@ -15,14 +15,22 @@ const playerListContainer = document.getElementById('playerListContainer');
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Isometric Tile Configuration Constants
+// Grid & Viewport Configuration Settings
 const TILE_WIDTH = 100;
 const TILE_HEIGHT = 50;
-const GRID_SIZE = 3; // 3x3 Grid
-const ORIGIN_X = canvas.width / 2; // Center horizontal point
-const ORIGIN_Y = 100;              // Initial vertical drop spacing offset
+const GRID_SIZE = 50; // 50x50 Field Matrix Dimension
 
-// Core Interface UI Button triggers
+// Camera Position System (Centered initially on the farm map origin)
+let camX = canvas.width / 2;
+let camY = 50;
+
+// Dragging Input Track states
+let isDragging = false;
+let startMouseX = 0;
+let startMouseY = 0;
+let totalDraggedDistance = 0;
+
+// Core Interface UI Actions
 document.getElementById('loginBtn').addEventListener('click', () => {
     socket.emit('login', { username: usernameInput.value, password: passwordInput.value });
 });
@@ -31,17 +39,16 @@ document.getElementById('registerBtn').addEventListener('click', () => {
     socket.emit('register', { username: usernameInput.value, password: passwordInput.value });
 });
 
-// Authentication Signals
+// Authentication Router Signals
 socket.on('authSuccess', (userData) => {
     myUsername = userData.username;
     authScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     farmerName.innerText = myUsername;
+    resizeCanvas();
 });
 
-socket.on('authError', (message) => {
-    errorMessage.innerText = message;
-});
+socket.on('authError', (message) => { errorMessage.innerText = message; });
 
 socket.on('updateLeaderboard', (playerArray) => {
     playerListContainer.innerHTML = "";
@@ -54,91 +61,129 @@ socket.on('updateLeaderboard', (playerArray) => {
     });
 });
 
-// Grid data updates
 socket.on('updateMyGrid', (myGridState) => {
     localGridState = myGridState;
     drawIsometricMap();
 });
 
-// ENGINE: Render Diamond Plots onto Canvas Area View
+// Automatically scales canvas size dynamically to fit right section panel
+function resizeCanvas() {
+    const container = canvas.parentElement;
+    canvas.width = container.clientWidth - 40;
+    canvas.height = window.innerHeight - 180;
+    camX = canvas.width / 2; // Re-center map placement anchor
+    drawIsometricMap();
+}
+window.addEventListener('resize', resizeCanvas);
+
+// RENDERING ENGINE: Draws viewport bounds optimally
 function drawIsometricMap() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear Canvas Frame
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (!localGridState.length) return;
 
-    for (let i = 0; i < 9; i++) {
-        // Calculate standard 2D flat indices matrix rows
+    for (let i = 0; i < localGridState.length; i++) {
         const row = Math.floor(i / GRID_SIZE);
         const col = i % GRID_SIZE;
 
-        // Isometric Translation Engine Algorithm Calculations
-        const isoX = ORIGIN_X + (col - row) * (TILE_WIDTH / 2);
-        const isoY = ORIGIN_Y + (col + row) * (TILE_HEIGHT / 2);
+        // Apply camera vector translations on top of standard diamond coordinates
+        const isoX = camX + (col - row) * (TILE_WIDTH / 2);
+        const isoY = camY + (col + row) * (TILE_HEIGHT / 2);
+
+        // Viewport Culling Optimization: Skip drawing tiles hidden off-screen
+        if (isoX < -TILE_WIDTH || isoX > canvas.width + TILE_WIDTH || 
+            isoY < -TILE_HEIGHT || isoY > canvas.height + TILE_HEIGHT) {
+            continue;
+        }
 
         const tileData = localGridState[i];
-        
-        // Define colors according to plant status growth loops
-        let tileColor = "#8b5a2b"; // Dirt Brown
-        let textLabel = "Dirt";
-        
+        let tileColor = "#8b5a2b"; // Empty Dirt
+        let textLabel = "";
+
         if (tileData.status === 'growing') {
-            tileColor = "#cd853f"; // Orange Sprout
+            tileColor = "#cd853f"; // Sprouting
             textLabel = "🌱";
         } else if (tileData.status === 'ready') {
-            tileColor = "#2e8b57"; // Ready Green
-            textLabel = "🌾 Ready";
+            tileColor = "#2e8b57"; // Ready
+            textLabel = "🌾";
         }
 
         drawIsometricDiamond(isoX, isoY, tileColor, textLabel);
     }
 }
 
-// Low-Level Vector Drawer mapping diamond nodes
 function drawIsometricDiamond(x, y, color, label) {
     ctx.save();
     ctx.beginPath();
-    
-    // Top Node
     ctx.moveTo(x, y);
-    // Right Node
     ctx.lineTo(x + TILE_WIDTH / 2, y + TILE_HEIGHT / 2);
-    // Bottom Node
     ctx.lineTo(x, y + TILE_HEIGHT);
-    // Left Node
     ctx.lineTo(x - TILE_WIDTH / 2, y + TILE_HEIGHT / 2);
-    
     ctx.closePath();
+    
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = "#6d421e"; // Outline border definitions
+    ctx.strokeStyle = "#6d421e";
+    ctx.lineWidth = 0.5;
     ctx.stroke();
 
-    // Draw UI overlay text labels centered on diamonds
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 12px sans-serif";
-    ctx.textAlign = "center";
-    ctx.shadowColor = "black";
-    ctx.shadowBlur = 4;
-    ctx.fillText(label, x, y + TILE_HEIGHT / 2 + 4);
-    
+    if (label) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(label, x, y + TILE_HEIGHT / 2 + 5);
+    }
     ctx.restore();
 }
 
-// Input Listener targeting canvas space conversion 
+// NAVIGATION INPUT MOUSE CONTROLS: Click-and-Drag / Pan
+canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startMouseX = e.clientX;
+    startMouseY = e.clientY;
+    totalDraggedDistance = 0;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - startMouseX;
+    const deltaY = e.clientY - startMouseY;
+    
+    // Slide camera anchors
+    camX += deltaX;
+    camY += deltaY;
+
+    startMouseX = e.clientX;
+    startMouseY = e.clientY;
+    totalDraggedDistance += Math.abs(deltaX) + Math.abs(deltaY);
+
+    drawIsometricMap(); // Redraw map at new offset instantly
+});
+
+window.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+});
+
+// Click action checker
 canvas.addEventListener('click', (event) => {
+    // If the player was just dragging the map around, do not register a tile placement click
+    if (totalDraggedDistance > 10) return;
+
     const rect = canvas.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const mouseY = event.clientY - rect.top;
 
-    // Inverse calculations mapping screen vector inputs down to data cells 
-    for (let i = 0; i < 9; i++) {
+    // Scan bounding points against target view offset vectors
+    for (let i = 0; i < localGridState.length; i++) {
         const row = Math.floor(i / GRID_SIZE);
         const col = i % GRID_SIZE;
 
-        const isoX = ORIGIN_X + (col - row) * (TILE_WIDTH / 2);
-        const isoY = ORIGIN_Y + (col + row) * (TILE_HEIGHT / 2);
+        const isoX = camX + (col - row) * (TILE_WIDTH / 2);
+        const isoY = camY + (col + row) * (TILE_HEIGHT / 2);
 
-        // Check bounding diamond hitbox points roughly via area estimations
+        // Approximate diamond tile selection hit box algorithm tracking
         if (mouseX > isoX - TILE_WIDTH/2 && mouseX < isoX + TILE_WIDTH/2 &&
             mouseY > isoY && mouseY < isoY + TILE_HEIGHT) {
             
