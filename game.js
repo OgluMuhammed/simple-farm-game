@@ -15,6 +15,9 @@ const playerListContainer = document.getElementById('playerListContainer');
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Prevent right-click menus from popping up on the canvas
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 // Base Grid Configuration Settings
 const BASE_TILE_WIDTH = 100;
 const BASE_TILE_HEIGHT = 50;
@@ -29,11 +32,14 @@ let zoom = 1.0;
 const MIN_ZOOM = 0.15; 
 const MAX_ZOOM = 2.5;  
 
-// Dragging Input Track states using modern unified pointer attributes
+// Dragging Input Track states
 let isDragging = false;
 let startPointerX = 0;
 let startPointerY = 0;
 let totalDraggedDistance = 0;
+
+// PERFORMANCE ENGINE: Only redraws when this is true
+let needsRedraw = true;
 
 // Core Interface UI Actions
 document.getElementById('loginBtn').addEventListener('click', () => {
@@ -68,7 +74,7 @@ socket.on('updateLeaderboard', (playerArray) => {
 
 socket.on('updateMyGrid', (myGridState) => {
     localGridState = myGridState;
-    drawIsometricMap();
+    needsRedraw = true; // Flag changes for render cycle
 });
 
 function resizeCanvas() {
@@ -76,11 +82,21 @@ function resizeCanvas() {
     canvas.width = container.clientWidth - 40;
     canvas.height = window.innerHeight - 180;
     camX = canvas.width / 2; 
-    drawIsometricMap();
+    needsRedraw = true;
 }
 window.addEventListener('resize', resizeCanvas);
 
-// RENDERING ENGINE
+// OPTIMIZED RENDER CYCLE: Locked to native hardware refresh rates (60FPS+)
+function gameLoop() {
+    if (needsRedraw) {
+        drawIsometricMap();
+        needsRedraw = false; // Reset flag
+    }
+    requestAnimationFrame(gameLoop);
+}
+// Launch the continuous loop
+requestAnimationFrame(gameLoop);
+
 function drawIsometricMap() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -96,6 +112,7 @@ function drawIsometricMap() {
         const isoX = camX + (col - row) * (currentWidth / 2);
         const isoY = camY + (col + row) * (currentHeight / 2);
 
+        // Viewport Culling Optimization: Skip calculations for tiles outside the screen view
         if (isoX < -currentWidth || isoX > canvas.width + currentWidth || 
             isoY < -currentHeight || isoY > canvas.height + currentHeight) {
             continue;
@@ -141,10 +158,10 @@ function drawIsometricDiamond(x, y, width, height, color, label) {
     ctx.restore();
 }
 
-// ZOOM CONTROLLER INPUT
+// ZOOM CONTROLLER
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault(); 
-    const zoomIntensity = 0.1;
+    const zoomIntensity = 0.08;
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -162,16 +179,16 @@ canvas.addEventListener('wheel', (e) => {
     camX = mouseX - mouseTimeX * zoom;
     camY = mouseY - mouseTimeY * zoom;
 
-    drawIsometricMap();
+    needsRedraw = true; // Schedule a redraw
 }, { passive: false });
 
-// INSTANT POINTER CONTROLS (Combines touch screens and mice inputs seamlessly without mobile latency)
+// POINTER CONTROLS
 canvas.addEventListener('pointerdown', (e) => {
     isDragging = true;
     startPointerX = e.clientX;
     startPointerY = e.clientY;
     totalDraggedDistance = 0;
-    canvas.setPointerCapture(e.pointerId); // Keeps dragging tracking stable even if finger wanders off the canvas
+    canvas.setPointerCapture(e.pointerId);
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -187,7 +204,7 @@ canvas.addEventListener('pointermove', (e) => {
     startPointerY = e.clientY;
     totalDraggedDistance += Math.abs(deltaX) + Math.abs(deltaY);
 
-    drawIsometricMap(); 
+    needsRedraw = true; // Schedule a redraw on movement instead of forcing it instantly
 });
 
 canvas.addEventListener('pointerup', (e) => {
@@ -195,7 +212,6 @@ canvas.addEventListener('pointerup', (e) => {
     isDragging = false;
     canvas.releasePointerCapture(e.pointerId);
 
-    // If the finger tapped statically without sliding around, treat it as an instant click action
     if (totalDraggedDistance < 8) {
         const rect = canvas.getBoundingClientRect();
         const pointerX = e.clientX - rect.left;
