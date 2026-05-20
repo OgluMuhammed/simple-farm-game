@@ -5,7 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
-// --- DATABASE CONNECTIONS ---
 const SUPABASE_URL = 'https://nlrluyhpyqahiehvwuyu.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_2lH9GJ74AtuUWaJnbdpY2g_fJd5_uou';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -21,36 +20,43 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Advanced Farm Grid: Holds state objects
-let farmGrid = Array(9).fill(null).map(() => ({ 
-    status: 'empty', 
-    plantedAt: null 
-}));
+let activeFarmers = {}; // Holds connected users, private grids, and balances
 
-let activeFarmers = {}; // Tracks logged-in socket connections and their current state
+// Helper function to bundle leaderboard array data for transmission
+function broadcastLeaderboard() {
+    const list = Object.values(activeFarmers).map(farmer => ({
+        username: farmer.username,
+        coins: farmer.coins
+    }));
+    io.emit('updateLeaderboard', list);
+}
 
-// Game Growth Loop: Checks crops every 1 second
+// Game Growth Loop running globally every 1 second
 setInterval(() => {
-    let changed = false;
-    const now = Date.now();
-    farmGrid.forEach((tile) => {
-        if (tile.status === 'growing' && now - tile.plantedAt >= 10000) {
-            tile.status = 'ready';
-            changed = true;
+    Object.keys(activeFarmers).forEach(socketId => {
+        let changed = false;
+        const now = Date.now();
+        const farmer = activeFarmers[socketId];
+
+        farmer.grid.forEach((tile) => {
+            if (tile.status === 'growing' && now - tile.plantedAt >= 10000) {
+                tile.status = 'ready';
+                changed = true;
+            }
+        });
+
+        // Send updates privately to that specific player only
+        if (changed) {
+            io.to(socketId).emit('updateMyGrid', farmer.grid);
         }
     });
-    if (changed) io.emit('updateGrid', farmGrid);
 }, 1000);
 
 io.on('connection', (socket) => {
-    // Send current map layout immediately to the connecting client
-    socket.emit('updateGrid', farmGrid);
 
     // SIGN UP LOGIC
     socket.on('register', async (data) => {
         const { username, password } = data;
-        
-        // Save the new user data directly into your Supabase table
         const { data: user, error } = await supabase
             .from('users')
             .insert([{ username, password }])
@@ -60,15 +66,21 @@ io.on('connection', (socket) => {
             socket.emit('authError', 'Username already taken or invalid.');
         } else {
             socket.emit('authSuccess', { username, coins: 0 });
-            activeFarmers[socket.id] = { username, coins: 0 };
+            
+            activeFarmers[socket.id] = {
+                username: username,
+                coins: 0,
+                grid: Array(9).fill(null).map(() => ({ status: 'empty', plantedAt: null }))
+            };
+            
+            socket.emit('updateMyGrid', activeFarmers[socket.id].grid);
+            broadcastLeaderboard();
         }
     });
 
     // LOGIN LOGIC
     socket.on('login', async (data) => {
         const { username, password } = data;
-        
-        // Look up the credentials inside the database
         const { data: users, error } = await supabase
             .from('users')
             .select('*')
@@ -80,47 +92,53 @@ io.on('connection', (socket) => {
         } else {
             const loggedInUser = users[0];
             socket.emit('authSuccess', { username: loggedInUser.username, coins: loggedInUser.coins });
-            activeFarmers[socket.id] = { username: loggedInUser.username, coins: loggedInUser.coins };
+            
+            // Build their isolated farming field profile map space
+            activeFarmers[socket.id] = {
+                username: loggedInUser.username,
+                coins: loggedInUser.coins,
+                grid: Array(9).fill(null).map(() => ({ status: 'empty', plantedAt: null }))
+            };
+
+            socket.emit('updateMyGrid', activeFarmers[socket.id].grid);
+            broadcastLeaderboard();
         }
     });
 
-    // FARMING ACTIONS
+    // ISOLATED HOOK INTERACTIONS
     socket.on('tileClick', async (data) => {
         const farmer = activeFarmers[socket.id];
-        if (!farmer) return; // Ignore input if the user has not authenticated yet
+        if (!farmer) return; // Prevent actions if not authenticated
 
         const { tileId } = data;
-        const tile = farmGrid[tileId];
+        const tile = farmer.grid[tileId];
 
         if (tile.status === 'empty') {
             tile.status = 'growing';
             tile.plantedAt = Date.now();
-            io.emit('updateGrid', farmGrid);
+            socket.emit('updateMyGrid', farmer.grid);
         } 
         else if (tile.status === 'ready') {
             tile.status = 'empty';
             tile.plantedAt = null;
-            
-            // Modify balance state locally
             farmer.coins += 10;
             
-            // Sync updated coin balance permanently to Supabase
+            // Commit to database
             await supabase
                 .from('users')
                 .update({ coins: farmer.coins })
                 .eq('username', farmer.username);
 
-            socket.emit('updateBalance', farmer.coins);
-            io.emit('updateGrid', farmGrid);
+            socket.emit('updateMyGrid', farmer.grid);
+            broadcastLeaderboard(); // Update leaderboard values across client lists
         }
     });
 
     socket.on('disconnect', () => {
         delete activeFarmers[socket.id];
+        broadcastLeaderboard(); // Remove from live visible active user list sidebar panel
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

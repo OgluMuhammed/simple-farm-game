@@ -5,21 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multiplayer Farm Tycoon</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #e0f0d0; margin: 0; padding: 20px; }
+        body { font-family: sans-serif; background: #e0f0d0; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
         .hidden { display: none !important; }
         
         /* Auth Screen Styling */
-        #authScreen { max-width: 300px; margin: 80px auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+        #authScreen { max-width: 300px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); text-align: center; }
         #authScreen input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
         #authScreen button { width: 95%; padding: 10px; margin: 5px 0; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
         .btn-login { background: #2e8b57; color: white; }
         .btn-register { background: #cd853f; color: white; }
         #errorMessage { color: red; font-weight: bold; margin-bottom: 10px; }
 
-        /* Game Screen Styling */
-        .stats { font-size: 24px; font-weight: bold; color: #b8860b; margin-bottom: 20px; }
-        .grid { display: grid; grid-template-columns: repeat(3, 110px); gap: 15px; justify-content: center; }
-        .tile { width: 110px; height: 110px; background: #8b5a2b; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-weight: bold; user-select: none; transition: background 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        /* Core Game Layout Split */
+        #gameScreen { display: flex; width: 100vw; height: 100vh; }
+
+        /* Left Side Bar Menu */
+        .sidebar { width: 280px; background: #2e4a3c; color: white; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; box-shadow: 4px 0 10px rgba(0,0,0,0.2); }
+        .sidebar h2 { margin-top: 0; color: #f0e68c; font-size: 20px; border-bottom: 2px solid #41634f; padding-bottom: 10px; }
+        .player-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
+        .player-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #3a5847; font-size: 16px; }
+        .player-item.self { color: #57ff9a; font-weight: bold; }
+
+        /* Right Side Farming Field Area */
+        .main-farm { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .main-farm h1 { color: #2e8b57; margin-bottom: 5px; }
+        .grid { display: grid; grid-template-columns: repeat(3, 120px); gap: 15px; margin-top: 20px; }
+        
+        .tile { width: 120px; height: 120px; background: #8b5a2b; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-weight: bold; user-select: none; transition: background 0.3s, transform 0.1s; box-shadow: 0 4px 6px rgba(0,0,0,0.15); }
+        .tile:active { transform: scale(0.97); }
         .tile.growing { background: #cd853f; color: #fff8dc; }
         .tile.ready { background: #2e8b57; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
@@ -29,7 +42,7 @@
 <body>
 
     <div id="authScreen">
-        <h2>🧑‍🌾 Join the Farm</h2>
+        <h2>🧑‍🌾 Join Your Farm</h2>
         <div id="errorMessage"></div>
         <input type="text" id="usernameInput" placeholder="Username" maxlength="15">
         <input type="password" id="passwordInput" placeholder="Password">
@@ -38,26 +51,34 @@
     </div>
 
     <div id="gameScreen" class="hidden">
-        <h1>Multiplayer Farm Tycoon</h1>
-        <p>Welcome back, <span id="farmerName" style="color:#2e8b57;">Player</span>!</p>
-        <div class="stats">💰 Coins: <span id="coinCount">0</span></div>
-        <div class="grid" id="farmGrid"></div>
+        
+        <div class="sidebar">
+            <h2>Active Farmers</h2>
+            <ul class="player-list" id="playerListContainer">
+                </ul>
+        </div>
+
+        <div class="main-farm">
+            <h1>Your Private Land</h1>
+            <p>Welcome back, <span id="farmerName" style="color:#1e5e3a; font-weight:bold;">Player</span>!</p>
+            <div class="grid" id="farmGrid"></div>
+        </div>
+
     </div>
 
     <script>
         const socket = io();
+        let myUsername = "";
         
-        // Dom References
         const authScreen = document.getElementById('authScreen');
         const gameScreen = document.getElementById('gameScreen');
         const usernameInput = document.getElementById('usernameInput');
         const passwordInput = document.getElementById('passwordInput');
         const errorMessage = document.getElementById('errorMessage');
-        const coinCountElement = document.getElementById('coinCount');
         const farmerName = document.getElementById('farmerName');
         const gridElement = document.getElementById('farmGrid');
+        const playerListContainer = document.getElementById('playerListContainer');
 
-        // Action triggers
         document.getElementById('loginBtn').addEventListener('click', () => {
             socket.emit('login', { username: usernameInput.value, password: passwordInput.value });
         });
@@ -66,7 +87,7 @@
             socket.emit('register', { username: usernameInput.value, password: passwordInput.value });
         });
 
-        // Setup the physical canvas tiles
+        // Initialize 9 clickable grid canvas buttons
         for (let i = 0; i < 9; i++) {
             const tile = document.createElement('div');
             tile.classList.add('tile');
@@ -76,20 +97,20 @@
             gridElement.appendChild(tile);
         }
 
-        // Server Response Actions
         socket.on('authSuccess', (userData) => {
+            myUsername = userData.username;
             authScreen.classList.add('hidden');
             gameScreen.classList.remove('hidden');
-            farmerName.innerText = userData.username;
-            coinCountElement.innerText = userData.coins;
+            farmerName.innerText = myUsername;
         });
 
         socket.on('authError', (message) => {
             errorMessage.innerText = message;
         });
 
-        socket.on('updateGrid', (serverGrid) => {
-            serverGrid.forEach((tileState, index) => {
+        // Updates only YOUR specific private farm grid
+        socket.on('updateMyGrid', (myGridState) => {
+            myGridState.forEach((tileState, index) => {
                 const tile = document.getElementById(`tile-${index}`);
                 tile.className = 'tile';
                 if (tileState.status === 'empty') tile.innerText = "🤎 Dirt";
@@ -98,8 +119,19 @@
             });
         });
 
-        socket.on('updateBalance', (balance) => {
-            coinCountElement.innerText = balance;
+        // Updates the Leaderboard / Sidebar row visibility engine
+        socket.on('updateLeaderboard', (playerArray) => {
+            playerListContainer.innerHTML = ""; // Wipe container clean
+            
+            playerArray.forEach(player => {
+                const li = document.createElement('li');
+                li.classList.add('player-item');
+                if (player.username === myUsername) {
+                    li.classList.add('self');
+                }
+                li.innerHTML = `<span>🧑‍🌾 ${player.username}</span> <span>💰 ${player.coins}</span>`;
+                playerListContainer.appendChild(li);
+            });
         });
     </script>
 </body>
