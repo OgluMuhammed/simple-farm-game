@@ -29,10 +29,10 @@ let zoom = 1.0;
 const MIN_ZOOM = 0.15; 
 const MAX_ZOOM = 2.5;  
 
-// Dragging Input Track states
+// Dragging Input Track states using modern unified pointer attributes
 let isDragging = false;
-let startMouseX = 0;
-let startMouseY = 0;
+let startPointerX = 0;
+let startPointerY = 0;
 let totalDraggedDistance = 0;
 
 // Core Interface UI Actions
@@ -80,7 +80,7 @@ function resizeCanvas() {
 }
 window.addEventListener('resize', resizeCanvas);
 
-// RENDERING ENGINE: Draws viewport tiles scaled by zoom factor
+// RENDERING ENGINE
 function drawIsometricMap() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -96,7 +96,6 @@ function drawIsometricMap() {
         const isoX = camX + (col - row) * (currentWidth / 2);
         const isoY = camY + (col + row) * (currentHeight / 2);
 
-        // Viewport Culling Optimization
         if (isoX < -currentWidth || isoX > canvas.width + currentWidth || 
             isoY < -currentHeight || isoY > canvas.height + currentHeight) {
             continue;
@@ -166,59 +165,54 @@ canvas.addEventListener('wheel', (e) => {
     drawIsometricMap();
 }, { passive: false });
 
-// NAVIGATION CONTROLS: Pan / Drag
-canvas.addEventListener('mousedown', (e) => {
+// INSTANT POINTER CONTROLS (Combines touch screens and mice inputs seamlessly without mobile latency)
+canvas.addEventListener('pointerdown', (e) => {
     isDragging = true;
-    startMouseX = e.clientX;
-    startMouseY = e.clientY;
+    startPointerX = e.clientX;
+    startPointerY = e.clientY;
     totalDraggedDistance = 0;
+    canvas.setPointerCapture(e.pointerId); // Keeps dragging tracking stable even if finger wanders off the canvas
 });
 
-canvas.addEventListener('mousemove', (e) => {
+canvas.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
 
-    const deltaX = e.clientX - startMouseX;
-    const deltaY = e.clientY - startMouseY;
+    const deltaX = e.clientX - startPointerX;
+    const deltaY = e.clientY - startPointerY;
     
     camX += deltaX;
     camY += deltaY;
 
-    startMouseX = e.clientX;
-    startMouseY = e.clientY;
+    startPointerX = e.clientX;
+    startPointerY = e.clientY;
     totalDraggedDistance += Math.abs(deltaX) + Math.abs(deltaY);
 
     drawIsometricMap(); 
 });
 
-window.addEventListener('mouseup', () => {
+canvas.addEventListener('pointerup', (e) => {
+    if (!isDragging) return;
     isDragging = false;
-});
+    canvas.releasePointerCapture(e.pointerId);
 
-// FIXED CLICK ENGINE: Uses inverse isometric projection matrix equations
-canvas.addEventListener('click', (event) => {
-    if (totalDraggedDistance > 10) return; // Ignore clicks if dragging the map
+    // If the finger tapped statically without sliding around, treat it as an instant click action
+    if (totalDraggedDistance < 8) {
+        const rect = canvas.getBoundingClientRect();
+        const pointerX = e.clientX - rect.left;
+        const pointerY = e.clientY - rect.top;
 
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
+        const currentWidth = BASE_TILE_WIDTH * zoom;
+        const currentHeight = BASE_TILE_HEIGHT * zoom;
 
-    const currentWidth = BASE_TILE_WIDTH * zoom;
-    const currentHeight = BASE_TILE_HEIGHT * zoom;
+        const relativeX = pointerX - camX;
+        const relativeY = pointerY - camY;
 
-    // Step 1: Remove camera panning offset from the mouse position
-    const relativeX = mouseX - camX;
-    const relativeY = mouseY - camY;
+        const col = Math.floor((relativeX / (currentWidth / 2) + relativeY / (currentHeight / 2)) / 2);
+        const row = Math.floor((relativeY / (currentHeight / 2) - relativeX / (currentWidth / 2)) / 2);
 
-    // Step 2: Inverse transformation math matrix formula equations
-    // Converts flat pixel coordinates into exact floating-point isometric grid rows/columns
-    const col = Math.floor((relativeX / (currentWidth / 2) + relativeY / (currentHeight / 2)) / 2);
-    const row = Math.floor((relativeY / (currentHeight / 2) - relativeX / (currentWidth / 2)) / 2);
-
-    // Step 3: Verify the calculated tile coordinates are inside our 50x50 board boundaries
-    if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
-        // Calculate the linear index of our 1D grid array configuration
-        const targetTileId = row * GRID_SIZE + col;
-        
-        socket.emit('tileClick', { tileId: targetTileId });
+        if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
+            const targetTileId = row * GRID_SIZE + col;
+            socket.emit('tileClick', { tileId: targetTileId });
+        }
     }
 });
