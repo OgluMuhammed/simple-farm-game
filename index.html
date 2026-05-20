@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Farm</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #e0f0d0; }
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 100px); 
+            gap: 10px; 
+            justify-content: center; 
+            margin-top: 50px; 
+        }
+        .tile { 
+            width: 100px; 
+            height: 100px; 
+            background: #8b5a2b; /* Dirt Brown */
+            border-radius: 8px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            color: white; 
+            font-weight: bold; 
+            user-select: none;
+        }
+        .tile.planted { background: #2e8b57; /* Plant Green */ }
+    </style>
+    <!-- Loads the multiplayer communication tool -->
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <h1>Our Multiplayer Farm</h1>
+    <p>Click a dirt tile to plant wheat!</p>
+    
+    <div class="grid" id="farmGrid"></div>
+
+    <script>
+        // Connect automatically to the server hosting this file
+        const socket = io(); 
+        const gridElement = document.getElementById('farmGrid');
+
+        // Create 9 empty tiles visually
+        for (let i = 0; i < 9; i++) {
+            const tile = document.createElement('div');
+            tile.classList.add('tile');
+            tile.id = `tile-${i}`;
+            tile.innerText = "Dirt";
+            
+            // When a player clicks a tile, tell the server
+            tile.addEventListener('click', () => {
+                socket.emit('plant', { tileId: i });
+            });
+            
+            gridElement.appendChild(tile);
+        }
+
+        // Listen for updates from the server
+        socket.on('updateGrid', (serverGrid) => {
+            serverGrid.forEach((cropState, index) => {
+                const tile = document.getElementById(`tile-${index}`);
+                if (cropState === 'wheat') {
+                    tile.classList.add('planted');
+                    tile.innerText = "Wheat";
+                } else {
+                    tile.classList.remove('planted');
+                    tile.innerText = "Dirt";
+                }
+            });
+        });
+    </script>
+</body>
+</html>
