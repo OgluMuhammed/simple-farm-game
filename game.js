@@ -26,8 +26,8 @@ let camY = 50;
 
 // Dynamic Zoom Constraints
 let zoom = 1.0;
-const MIN_ZOOM = 0.15; // Zoomed far out (bird's-eye view)
-const MAX_ZOOM = 2.5;  // Zoomed close in
+const MIN_ZOOM = 0.15; 
+const MAX_ZOOM = 2.5;  
 
 // Dragging Input Track states
 let isDragging = false;
@@ -86,7 +86,6 @@ function drawIsometricMap() {
 
     if (!localGridState.length) return;
 
-    // Scale our tiles dynamically based on the current zoom multiplier
     const currentWidth = BASE_TILE_WIDTH * zoom;
     const currentHeight = BASE_TILE_HEIGHT * zoom;
 
@@ -94,11 +93,10 @@ function drawIsometricMap() {
         const row = Math.floor(i / GRID_SIZE);
         const col = i % GRID_SIZE;
 
-        // Apply camera vector translations and zoom offsets
         const isoX = camX + (col - row) * (currentWidth / 2);
         const isoY = camY + (col + row) * (currentHeight / 2);
 
-        // Viewport Culling Optimization: Skip drawing off-screen tiles
+        // Viewport Culling Optimization
         if (isoX < -currentWidth || isoX > canvas.width + currentWidth || 
             isoY < -currentHeight || isoY > canvas.height + currentHeight) {
             continue;
@@ -132,10 +130,9 @@ function drawIsometricDiamond(x, y, width, height, color, label) {
     ctx.fillStyle = color;
     ctx.fill();
     ctx.strokeStyle = "#6d421e";
-    ctx.lineWidth = 0.5 * zoom; // Scale outline with zoom level
+    ctx.lineWidth = 0.5 * zoom; 
     ctx.stroke();
 
-    // Font scales down smoothly when zooming out
     if (label && zoom > 0.3) { 
         ctx.fillStyle = "#ffffff";
         ctx.font = `${Math.floor(14 * zoom)}px sans-serif`;
@@ -145,39 +142,31 @@ function drawIsometricDiamond(x, y, width, height, color, label) {
     ctx.restore();
 }
 
-// ZOOM CONTROLLER INPUT: Listens to mouse scrollwheel
+// ZOOM CONTROLLER INPUT
 canvas.addEventListener('wheel', (e) => {
-    e.preventDefault(); // Stop entire webpage from scrolling down
-
+    e.preventDefault(); 
     const zoomIntensity = 0.1;
-    
-    // Get mouse positions relative to canvas
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Math to track where mouse was pointing before zoom so it zooms on target cursor point
     const mouseTimeX = (mouseX - camX) / zoom;
     const mouseTimeY = (mouseY - camY) / zoom;
 
-    // Determine zoom direction
     if (e.deltaY < 0) {
         zoom += zoomIntensity;
     } else {
         zoom -= zoomIntensity;
     }
 
-    // Keep zoom within strict boundaries
     zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
-
-    // Shift camera positions relative to new focal zoom level point
     camX = mouseX - mouseTimeX * zoom;
     camY = mouseY - mouseTimeY * zoom;
 
     drawIsometricMap();
 }, { passive: false });
 
-// NAVIGATION CONTROLS: Pan / Drag map around
+// NAVIGATION CONTROLS: Pan / Drag
 canvas.addEventListener('mousedown', (e) => {
     isDragging = true;
     startMouseX = e.clientX;
@@ -205,9 +194,9 @@ window.addEventListener('mouseup', () => {
     isDragging = false;
 });
 
-// Click action checker with accounting for active zooms
+// FIXED CLICK ENGINE: Uses inverse isometric projection matrix equations
 canvas.addEventListener('click', (event) => {
-    if (totalDraggedDistance > 10) return;
+    if (totalDraggedDistance > 10) return; // Ignore clicks if dragging the map
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
@@ -216,19 +205,20 @@ canvas.addEventListener('click', (event) => {
     const currentWidth = BASE_TILE_WIDTH * zoom;
     const currentHeight = BASE_TILE_HEIGHT * zoom;
 
-    for (let i = 0; i < localGridState.length; i++) {
-        const row = Math.floor(i / GRID_SIZE);
-        const col = i % GRID_SIZE;
+    // Step 1: Remove camera panning offset from the mouse position
+    const relativeX = mouseX - camX;
+    const relativeY = mouseY - camY;
 
-        const isoX = camX + (col - row) * (currentWidth / 2);
-        const isoY = camY + (col + row) * (currentHeight / 2);
+    // Step 2: Inverse transformation math matrix formula equations
+    // Converts flat pixel coordinates into exact floating-point isometric grid rows/columns
+    const col = Math.floor((relativeX / (currentWidth / 2) + relativeY / (currentHeight / 2)) / 2);
+    const row = Math.floor((relativeY / (currentHeight / 2) - relativeX / (currentWidth / 2)) / 2);
 
-        // Hitbox accounts for scaled configurations
-        if (mouseX > isoX - currentWidth/2 && mouseX < isoX + currentWidth/2 &&
-            mouseY > isoY && mouseY < isoY + currentHeight) {
-            
-            socket.emit('tileClick', { tileId: i });
-            break;
-        }
+    // Step 3: Verify the calculated tile coordinates are inside our 50x50 board boundaries
+    if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE) {
+        // Calculate the linear index of our 1D grid array configuration
+        const targetTileId = row * GRID_SIZE + col;
+        
+        socket.emit('tileClick', { tileId: targetTileId });
     }
 });
